@@ -12,6 +12,7 @@ import type {
   HydrogenSessionData,
 } from '@shopify/hydrogen';
 import type {AppSession} from '~/lib/session';
+import {createRickAndMortyClient} from '~/lib/createRickAndMortyClient.server';
 
 declare global {
   /**
@@ -45,6 +46,7 @@ declare module '@shopify/remix-oxygen' {
     customerAccount: CustomerAccount;
     session: AppSession;
     waitUntil: ExecutionContext['waitUntil'];
+    rickAndMorty: ReturnType<typeof createRickAndMortyClient>;
   }
 
   /**

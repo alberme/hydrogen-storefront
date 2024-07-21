@@ -17,6 +17,8 @@ import {
 import {AppSession} from '~/lib/session';
 import {CART_QUERY_FRAGMENT} from '~/lib/fragments';
 
+import {createRickAndMortyClient} from '~/lib/createRickAndMortyClient.server';
+
 /**
  * Export a fetch handler in module format.
  */
@@ -77,6 +79,11 @@ export default {
         cartQueryFragment: CART_QUERY_FRAGMENT,
       });
 
+      const rickAndMorty = createRickAndMortyClient({
+        cache,
+        waitUntil,
+      });
+
       /**
        * Create a Remix request handler and pass
        * Hydrogen's Storefront client to the loader context.
@@ -91,6 +98,7 @@ export default {
           cart,
           env,
           waitUntil,
+          rickAndMorty,
         }),
       });
 
