@@ -1,10 +1,9 @@
-import {json, type LoaderFunctionArgs} from '@shopify/remix-oxygen';
+import {json, type LoaderFunctionArgs} from '@netlify/remix-runtime';
 import type {
   NormalizedPredictiveSearch,
   NormalizedPredictiveSearchResults,
 } from '~/components/Search';
 import {NO_PREDICTIVE_SEARCH_RESULTS} from '~/components/Search';
-import {applyTrackingParams} from '~/lib/search';
 
 import type {
   PredictiveArticleFragment,
@@ -14,6 +13,12 @@ import type {
   PredictiveQueryFragment,
   PredictiveSearchQuery,
 } from 'storefrontapi.generated';
+
+type PredictiveSearchResultItem =
+  | PredictiveArticleFragment
+  | PredictiveCollectionFragment
+  | PredictivePageFragment
+  | PredictiveProductFragment;
 
 type PredictiveSearchTypes =
   | 'ARTICLE'
@@ -30,22 +35,22 @@ const DEFAULT_SEARCH_TYPES: PredictiveSearchTypes[] = [
   'QUERY',
 ];
 
-export type PredictiveSearchAPILoader = typeof loader;
-
 /**
  * Fetches the search results from the predictive search API
  * requested by the SearchForm component
  */
-export async function loader({request, params, context}: LoaderFunctionArgs) {
+export async function action({request, params, context}: LoaderFunctionArgs) {
+  if (request.method !== 'POST') {
+    throw new Error('Invalid request method');
+  }
+
   const search = await fetchPredictiveSearchResults({
     params,
     request,
     context,
   });
 
-  return json(search, {
-    headers: {'Cache-Control': `max-age=${search.searchTerm ? 60 : 3600}`},
-  });
+  return json(search);
 }
 
 async function fetchPredictiveSearchResults({
@@ -55,10 +60,15 @@ async function fetchPredictiveSearchResults({
 }: Pick<LoaderFunctionArgs, 'params' | 'context' | 'request'>) {
   const url = new URL(request.url);
   const searchParams = new URLSearchParams(url.search);
-  const searchTerm = searchParams.get('q') || '';
-  const limit = Number(searchParams.get('limit') || 10);
-  const rawTypes = String(searchParams.get('type') || 'ANY');
-
+  let body;
+  try {
+    body = await request.formData();
+  } catch (error) {}
+  const searchTerm = String(body?.get('q') || searchParams.get('q') || '');
+  const limit = Number(body?.get('limit') || searchParams.get('limit') || 10);
+  const rawTypes = String(
+    body?.get('type') || searchParams.get('type') || 'ANY',
+  );
   const searchTypes =
     rawTypes === 'ANY'
       ? DEFAULT_SEARCH_TYPES
@@ -109,6 +119,21 @@ export function normalizePredictiveSearchResults(
       results: NO_PREDICTIVE_SEARCH_RESULTS,
       totalResults,
     };
+  }
+
+  function applyTrackingParams(
+    resource: PredictiveSearchResultItem | PredictiveQueryFragment,
+    params?: string,
+  ) {
+    if (params) {
+      return resource.trackingParameters
+        ? `?${params}&${resource.trackingParameters}`
+        : `?${params}`;
+    } else {
+      return resource.trackingParameters
+        ? `?${resource.trackingParameters}`
+        : '';
+    }
   }
 
   const localePrefix = locale ? `/${locale}` : '';
@@ -209,7 +234,7 @@ export function normalizePredictiveSearchResults(
             id: article.id,
             image: article.image,
             title: article.title,
-            url: `${localePrefix}/blogs/${article.blog.handle}/${article.handle}/${trackingParams}`,
+            url: `${localePrefix}/blog/${article.handle}${trackingParams}`,
           };
         },
       ),
@@ -225,9 +250,6 @@ const PREDICTIVE_SEARCH_QUERY = `#graphql
     id
     title
     handle
-    blog {
-      handle
-    }
     image {
       url
       altText

@@ -1,5 +1,5 @@
 import {Suspense} from 'react';
-import {defer, redirect, type LoaderFunctionArgs} from '@shopify/remix-oxygen';
+import {defer, redirect, type LoaderFunctionArgs} from '@netlify/remix-runtime';
 import {
   Await,
   Link,
@@ -12,6 +12,7 @@ import type {
   ProductVariantsQuery,
   ProductVariantFragment,
 } from 'storefrontapi.generated';
+
 import {
   Image,
   Money,
@@ -19,51 +20,41 @@ import {
   type VariantOption,
   getSelectedProductOptions,
   CartForm,
-  type OptimisticCartLine,
-  Analytics,
-  type CartViewPayload,
-  useAnalytics,
 } from '@shopify/hydrogen';
-import type {SelectedOption} from '@shopify/hydrogen/storefront-api-types';
-import {getVariantUrl} from '~/lib/variants';
-import {useAside} from '~/components/Aside';
+import type {
+  CartLineInput,
+  SelectedOption,
+} from '@shopify/hydrogen/storefront-api-types';
+import {getVariantUrl} from '~/utils';
 
 export const meta: MetaFunction<typeof loader> = ({data}) => {
   return [{title: `Hydrogen | ${data?.product.title ?? ''}`}];
 };
 
-export async function loader(args: LoaderFunctionArgs) {
-  // Start fetching non-critical data without blocking time to first byte
-  const deferredData = loadDeferredData(args);
-
-  // Await the critical data required to render initial state of the page
-  const criticalData = await loadCriticalData(args);
-
-  return defer({...deferredData, ...criticalData});
-}
-
-/**
- * Load data necessary for rendering content above the fold. This is the critical data
- * needed to render the page. If it's unavailable, the whole page should 400 or 500 error.
- */
-async function loadCriticalData({
-  context,
-  params,
-  request,
-}: LoaderFunctionArgs) {
+export async function loader({params, request, context}: LoaderFunctionArgs) {
   const {handle} = params;
   const {storefront} = context;
+
+  const selectedOptions = getSelectedProductOptions(request).filter(
+    (option) =>
+      // Filter out Shopify predictive search query params
+      !option.name.startsWith('_sid') &&
+      !option.name.startsWith('_pos') &&
+      !option.name.startsWith('_psq') &&
+      !option.name.startsWith('_ss') &&
+      !option.name.startsWith('_v') &&
+      // Filter out third party tracking params
+      !option.name.startsWith('fbclid'),
+  );
 
   if (!handle) {
     throw new Error('Expected product handle to be defined');
   }
 
-  const [{product}] = await Promise.all([
-    storefront.query(PRODUCT_QUERY, {
-      variables: {handle, selectedOptions: getSelectedProductOptions(request)},
-    }),
-    // Add other queries here, so that they are loaded in parallel
-  ]);
+  // await the query for the critical product data
+  const {product} = await storefront.query(PRODUCT_QUERY, {
+    variables: {handle, selectedOptions},
+  });
 
   if (!product?.id) {
     throw new Response(null, {status: 404});
@@ -87,35 +78,16 @@ async function loadCriticalData({
     }
   }
 
-  return {
-    product,
-  };
-}
-
-/**
- * Load data for rendering content below the fold. This data is deferred and will be
- * fetched after the initial page load. If it's unavailable, the page should still 200.
- * Make sure to not throw any errors here, as it will cause the page to 500.
- */
-function loadDeferredData({context, params}: LoaderFunctionArgs) {
   // In order to show which variants are available in the UI, we need to query
   // all of them. But there might be a *lot*, so instead separate the variants
   // into it's own separate query that is deferred. So there's a brief moment
   // where variant options might show as available when they're not, but after
   // this deffered query resolves, the UI will update.
-  const variants = context.storefront
-    .query(VARIANTS_QUERY, {
-      variables: {handle: params.handle!},
-    })
-    .catch((error) => {
-      // Log query errors, but don't throw them so the page can still render
-      console.error(error);
-      return null;
-    });
+  const variants = storefront.query(VARIANTS_QUERY, {
+    variables: {handle},
+  });
 
-  return {
-    variants,
-  };
+  return defer({product, variants});
 }
 
 function redirectToFirstVariant({
@@ -152,21 +124,6 @@ export default function Product() {
         product={product}
         variants={variants}
       />
-      <Analytics.ProductView
-        data={{
-          products: [
-            {
-              id: product.id,
-              title: product.title,
-              price: selectedVariant?.price.amount || '0',
-              vendor: product.vendor,
-              variantId: selectedVariant?.id || '',
-              variantTitle: selectedVariant?.title || '',
-              quantity: 1,
-            },
-          ],
-        }}
-      />
     </div>
   );
 }
@@ -195,7 +152,7 @@ function ProductMain({
 }: {
   product: ProductFragment;
   selectedVariant: ProductFragment['selectedVariant'];
-  variants: Promise<ProductVariantsQuery | null>;
+  variants: Promise<ProductVariantsQuery>;
 }) {
   const {title, descriptionHtml} = product;
   return (
@@ -220,7 +177,7 @@ function ProductMain({
             <ProductForm
               product={product}
               selectedVariant={selectedVariant}
-              variants={data?.product?.variants.nodes || []}
+              variants={data.product?.variants.nodes || []}
             />
           )}
         </Await>
@@ -271,8 +228,6 @@ function ProductForm({
   selectedVariant: ProductFragment['selectedVariant'];
   variants: Array<ProductVariantFragment>;
 }) {
-  const {open} = useAside();
-  const {publish, shop, cart, prevCart} = useAnalytics();
   return (
     <div className="product-form">
       <VariantSelector
@@ -286,13 +241,7 @@ function ProductForm({
       <AddToCartButton
         disabled={!selectedVariant || !selectedVariant.availableForSale}
         onClick={() => {
-          open('cart');
-          publish('cart_viewed', {
-            cart,
-            prevCart,
-            shop,
-            url: window.location.href || '',
-          } as CartViewPayload);
+          window.location.href = window.location.href + '#cart-aside';
         }}
         lines={
           selectedVariant
@@ -300,7 +249,6 @@ function ProductForm({
                 {
                   merchandiseId: selectedVariant.id,
                   quantity: 1,
-                  selectedVariant,
                 },
               ]
             : []
@@ -351,7 +299,7 @@ function AddToCartButton({
   analytics?: unknown;
   children: React.ReactNode;
   disabled?: boolean;
-  lines: Array<OptimisticCartLine>;
+  lines: CartLineInput[];
   onClick?: () => void;
 }) {
   return (
@@ -425,7 +373,7 @@ const PRODUCT_FRAGMENT = `#graphql
       name
       values
     }
-    selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions, ignoreUnknownOptions: true, caseInsensitiveMatch: true) {
+    selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions) {
       ...ProductVariant
     }
     variants(first: 1) {

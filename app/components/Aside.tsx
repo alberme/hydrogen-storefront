@@ -1,17 +1,8 @@
-import {createContext, type ReactNode, useContext, useState} from 'react';
-
-type AsideType = 'search' | 'cart' | 'mobile' | 'closed';
-type AsideContextValue = {
-  type: AsideType;
-  open: (mode: AsideType) => void;
-  close: () => void;
-};
-
 /**
- * A side bar component with Overlay
+ * A side bar component with Overlay that works without JavaScript.
  * @example
  * ```jsx
- * <Aside type="search" heading="SEARCH">
+ * <Aside id="search-aside" heading="SEARCH">
  *  <input type="search" />
  *  ...
  * </Aside>
@@ -20,28 +11,25 @@ type AsideContextValue = {
 export function Aside({
   children,
   heading,
-  type,
+  id = 'aside',
 }: {
   children?: React.ReactNode;
-  type: AsideType;
   heading: React.ReactNode;
+  id?: string;
 }) {
-  const {type: activeType, close} = useAside();
-  const expanded = type === activeType;
-
   return (
-    <div
-      aria-modal
-      className={`overlay ${expanded ? 'expanded' : ''}`}
-      role="dialog"
-    >
-      <button className="close-outside" onClick={close} />
+    <div aria-modal className="overlay" id={id} role="dialog">
+      <button
+        className="close-outside"
+        onClick={() => {
+          history.go(-1);
+          window.location.hash = '';
+        }}
+      />
       <aside>
         <header>
           <h3>{heading}</h3>
-          <button className="close reset" onClick={close}>
-            &times;
-          </button>
+          <CloseAside />
         </header>
         <main>{children}</main>
       </aside>
@@ -49,28 +37,11 @@ export function Aside({
   );
 }
 
-const AsideContext = createContext<AsideContextValue | null>(null);
-
-Aside.Provider = function AsideProvider({children}: {children: ReactNode}) {
-  const [type, setType] = useState<AsideType>('closed');
-
+function CloseAside() {
   return (
-    <AsideContext.Provider
-      value={{
-        type,
-        open: setType,
-        close: () => setType('closed'),
-      }}
-    >
-      {children}
-    </AsideContext.Provider>
+    /* eslint-disable-next-line jsx-a11y/anchor-is-valid */
+    <a className="close" href="#" onChange={() => history.go(-1)}>
+      &times;
+    </a>
   );
-};
-
-export function useAside() {
-  const aside = useContext(AsideContext);
-  if (!aside) {
-    throw new Error('useAside must be used within an AsideProvider');
-  }
-  return aside;
 }

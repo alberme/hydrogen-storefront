@@ -1,6 +1,6 @@
 import {useLoaderData} from '@remix-run/react';
 import {CacheShort} from '@shopify/hydrogen';
-import {json, type LoaderFunctionArgs} from '@shopify/remix-oxygen';
+import {json, type LoaderFunctionArgs} from '@netlify/remix-runtime';
 
 export async function loader({context}: LoaderFunctionArgs) {
   const {characters} = await context.rickAndMorty.query(CHARACTERS_QUERY, {

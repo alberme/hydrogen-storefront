@@ -1,12 +1,8 @@
-import {redirect, type LoaderFunctionArgs} from '@shopify/remix-oxygen';
+import {redirect, type LoaderFunctionArgs} from '@netlify/remix-runtime';
 
-// fallback wild card for all unauthenticated routes in account section
 export async function loader({context}: LoaderFunctionArgs) {
-  await context.customerAccount.handleAuthStatus();
-
-  return redirect('/account', {
-    headers: {
-      'Set-Cookie': await context.session.commit(),
-    },
-  });
+  if (await context.session.get('customerAccessToken')) {
+    return redirect('/account');
+  }
+  return redirect('/account/login');
 }

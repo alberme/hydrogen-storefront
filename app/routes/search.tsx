@@ -1,6 +1,6 @@
-import {defer, type LoaderFunctionArgs} from '@shopify/remix-oxygen';
+import {defer, type LoaderFunctionArgs} from '@netlify/remix-runtime';
 import {useLoaderData, type MetaFunction} from '@remix-run/react';
-import {getPaginationVariables, Analytics} from '@shopify/hydrogen';
+import {getPaginationVariables} from '@shopify/hydrogen';
 
 import {SearchForm, SearchResults, NoSearchResults} from '~/components/Search';
 
@@ -21,7 +21,7 @@ export async function loader({request, context}: LoaderFunctionArgs) {
     };
   }
 
-  const {errors, ...data} = await context.storefront.query(SEARCH_QUERY, {
+  const data = await context.storefront.query(SEARCH_QUERY, {
     variables: {
       query: searchTerm,
       ...variables,
@@ -41,10 +41,7 @@ export async function loader({request, context}: LoaderFunctionArgs) {
     totalResults,
   };
 
-  return defer({
-    searchTerm,
-    searchResults,
-  });
+  return defer({searchTerm, searchResults});
 }
 
 export default function SearchPage() {
@@ -57,12 +54,8 @@ export default function SearchPage() {
       {!searchTerm || !searchResults.totalResults ? (
         <NoSearchResults />
       ) : (
-        <SearchResults
-          results={searchResults.results}
-          searchTerm={searchTerm}
-        />
+        <SearchResults results={searchResults.results} />
       )}
-      <Analytics.SearchView data={{searchTerm, searchResults}} />
     </div>
   );
 }

@@ -2,13 +2,7 @@ import {createWithCache, CacheLong, type WithCache} from '@shopify/hydrogen';
 
 type AllCacheOptions = Parameters<WithCache>[1];
 
-export function createRickAndMortyClient({
-  cache,
-  waitUntil,
-}: {
-  cache: Cache;
-  waitUntil: ExecutionContext['waitUntil'];
-}) {
+export function createRickAndMortyClient({cache}: {cache: Cache}) {
   const withCache = createWithCache({cache, waitUntil});
 
   async function query<T = any>(
